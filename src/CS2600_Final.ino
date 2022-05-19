@@ -45,24 +45,38 @@ void setup() {
   Serial.println(recvPin);   //print the infrared receiving pin
 }
 
+int rgb_cond = 0;
 int lcd_cond = 0;
 int mode_cond = 0;
 int menu_cond = 0;
-const int led_speed = 20;
-unsigned long button_play = 0xFFA857;
-unsigned long button_menu = 0xFFE21D;
-unsigned long button_add = 0xFF02FD;
-unsigned long button_minus = 0xFF9867;
-unsigned long button_0 = 0xFF6897;
-unsigned long button_1 = 0xFF30CF;
-unsigned long button_2 = 0xFF18E7;
-unsigned long button_3 = 0xFF7A85;
-unsigned long button_4 = 0xFF10EF;
-unsigned long button_5 = 0xFF38C7;
-unsigned long button_6 = 0xFF5AA5;
-unsigned long button_7 = 0xFF42BD;
-unsigned long button_8 = 0xFF4AB5;
-unsigned long button_9 = 0xFF52AD;
+int add_minus_cond = 0;
+int mode_1 = 1;
+int mode_2 = 2;
+const int speed_length = 15;
+char arr_speed[speed_length]= "*******       ";
+int current_speed = 6;
+int led_speed = 40;
+const int rgb_length = 18;
+char arr_rgb[rgb_length] = " (   ,    ,   )  ";
+int current_rgb = 0;
+int ir_value;
+int arr_values[9];
+int input_state = 1;
+
+const unsigned long button_play = 0xFFA857;
+const  long button_menu = 0xFFE21D;
+const unsigned long button_add = 0xFF02FD;
+const unsigned long button_minus = 0xFF9867;
+const unsigned long button_0 = 0xFF6897;
+const unsigned long button_1 = 0xFF30CF;
+const unsigned long button_2 = 0xFF18E7;
+const unsigned long button_3 = 0xFF7A85;
+const unsigned long button_4 = 0xFF10EF;
+const unsigned long button_5 = 0xFF38C7;
+const unsigned long button_6 = 0xFF5AA5;
+const unsigned long button_7 = 0xFF42BD;
+const unsigned long button_8 = 0xFF4AB5;
+const unsigned long button_9 = 0xFF52AD;
 
 int red, green, blue;
 
@@ -77,6 +91,8 @@ void loop() {
       lcd_cond = 0;
       menu_cond = 1;
       mode_cond = 1;
+      mode_1 = 1;
+      mode_2 = 1;
     
     }
     else if (results.value == button_menu){
@@ -84,35 +100,95 @@ void loop() {
       lcd_cond = 1;
       menu_cond = 0;
       mode_cond = 0;
+      mode_1 = 1;
+      mode_2 = 1;
     }
 
-    irrecv.resume();
-    delay(10);            // Release the IRremote. Receive the next value
-  }
+  
 
   //render mode screen if needed first
   if (mode_cond == 0){
     
-    if (results.value == button_1){
+    if ((results.value == button_1 || mode_1 == 0) && mode_2 == 1 ){
         menu_cond = 1;
+        mode_2 = 1;
+        mode_1 = 0;
         lcd.clear(); 
         lcd.setCursor(0, 0);
         lcd.print("1: RGB Speed");
         lcd.setCursor(0, 1); 
-        lcd.print("-            +");
-        
-              
-      
+        lcd.print("-");
+        for (int i = 0 ; i < speed_length - 1;i++){
+          lcd.print(arr_speed[i]);
+        }
+        lcd.print("+");
+        if (results.value == button_add){
+            if (current_speed <  13){
+                current_speed++;
+                arr_speed[current_speed] = '*';
+                led_speed -= 5;
+            }
+            
+        }
+        else if (results.value == button_minus){
+             if (current_speed >=0){
+                 arr_speed[current_speed] = ' ';
+                 current_speed--;
+                 led_speed += 5;
+              }
+          
+        }
+   
     }
-    else if (results.value == button_2){
-        menu_cond = 1;
+    else if ((results.value == button_2 || mode_2 == 0) && mode_1 == 1){
+        
+        mode_2 = 0;
+        mode_1 = 1;
         lcd.clear(); 
         lcd.setCursor(0, 0);
         lcd.print("2: Set RGB Values");
         lcd.setCursor(0, 1); 
-        lcd.print("-            +"); 
+        for (int i = 0 ; i < rgb_length - 1;i++){
+          lcd.print(arr_rgb[i]);
+        }
+
+        //logic for rbg input
+        
+        //Set input for rgb
+        if ((results.value == button_0 || results.value == button_1 || results.value == button_2 || 
+            results.value == button_3 || results.value == button_4 || results.value == button_5 ||
+            results.value == button_6 || results.value == button_7 || results.value == button_8 ||
+            results.value == button_9) && menu_cond == 1){
+                if ((current_rgb + 2) == 2 || (current_rgb + 2) == 5 || (current_rgb+2) == 9){
+                    if ( convertHEX(results.value) >= 0 && convertHEX(results.value) <= 2){
+                        ir_value = convertHEX(results.value);
+                        arr_values[current_rgb] = ir_value;
+                        arr_rgb[current_rgb+2] = (char)ir_value;
+                        current_rgb++;
+                    }
+                  
+                }
+                else{
+                    arr_values[current_rgb] = convertHEX(results.value);
+                    arr_rgb[current_rgb+2] = (char)ir_value;
+                    current_rgb++;
+                }
+
+                for(int j = 0; j< 9;j++){
+                    Serial.print(arr_values[j]);
+                    Serial.print("," );
+                }
+                Serial.println("");
+              
+            }
+            menu_cond = 1;
+
+            
     }
     
+  }
+    irrecv.resume();
+    //delay(100);            // Release the IRremote. Receive the next value
   }
   
   // read DHT11 data and save it 
@@ -166,6 +242,32 @@ long wheel(int pos) {
     WheelPos -= 170;
     return ((WheelPos * 3) << 16 | (255 - WheelPos * 3));
   }
+}
+
+int convertHEX (long unsigned value){
+  switch (value){
+      case button_0:
+        ir_value = 0; break;
+      case button_1:
+        ir_value = 1; break;
+      case button_2:
+        ir_value = 2; break;
+      case button_3:
+        ir_value = 3; break;
+      case button_4:
+        ir_value = 4; break;
+      case button_5:
+        ir_value = 5; break;
+      case button_6:
+        ir_value = 6; break;
+      case button_7:
+        ir_value = 7; break;
+      case button_8:
+        ir_value = 8; break;
+      case button_9:
+        ir_value = 9; break;
+  }
+  return ir_value;
 }
 
 
