@@ -1,14 +1,9 @@
-/**********************************************************************
-  Filename    : Temperature and Humidity Sensor
-  Description : Use DHT11 to measure temperature and humidity.Print the result to the LCD1602.
-  Auther      : www.freenove.com
-  Modification: 2020/07/11
-**********************************************************************/
+
 #include <Arduino.h>
 #include <IRremoteESP8266.h>
 #include <IRrecv.h>
 #include <IRutils.h>
-const uint16_t recvPin = 15; // Infrared receiving pin
+const uint16_t recvPin = 0; // Infrared receiving pin
 IRrecv irrecv(recvPin);      // Create a class object used to receive class
 decode_results results;       // Create a decoding results class object
 
@@ -50,38 +45,106 @@ void setup() {
   Serial.println(recvPin);   //print the infrared receiving pin
 }
 
+int lcd_cond = 0;
+int mode_cond = 0;
+int menu_cond = 0;
+const int led_speed = 20;
+unsigned long button_play = 0xFFA857;
+unsigned long button_menu = 0xFFE21D;
+unsigned long button_add = 0xFF02FD;
+unsigned long button_minus = 0xFF9867;
+unsigned long button_0 = 0xFF6897;
+unsigned long button_1 = 0xFF30CF;
+unsigned long button_2 = 0xFF18E7;
+unsigned long button_3 = 0xFF7A85;
+unsigned long button_4 = 0xFF10EF;
+unsigned long button_5 = 0xFF38C7;
+unsigned long button_6 = 0xFF5AA5;
+unsigned long button_7 = 0xFF42BD;
+unsigned long button_8 = 0xFF4AB5;
+unsigned long button_9 = 0xFF52AD;
+
+int red, green, blue;
+
+
+
 void loop() {
-
-  
-  //remote
-  
-  // read DHT11 data and save it 
-  flag:TempAndHumidity DHT = dht.getTempAndHumidity();
-  if (dht.getStatus() != 0) {       //Determine if the read is successful, and if it fails, go back to flag and re-read the data
-    goto flag;
-  }  
-  lcd.setCursor(0, 0);              //set the cursor to column 0, line 1
-  lcd.print("Temperature:");        //display the Humidity on the LCD1602
-  lcd.print(DHT.temperature);   
-  lcd.setCursor(0, 1);              //set the cursor to column 0, line 0 
-  lcd.print("Humidity   :");        //display the Humidity on the LCD1602
-  lcd.print(DHT.humidity);  
-
-
-  //RGB
-   for (int i = 0; i < 256; i++) {
-    setColor(wheel(i));
-    delay(20);
-  }
-
-  //remote
   if (irrecv.decode(&results)) {          // Waiting for decoding
     serialPrintUint64(results.value, HEX);// Print out the decoded results
     Serial.println("");
-    irrecv.resume();                      // Release the IRremote. Receive the next value
+    if(results.value == button_play){
+      lcd.clear();
+      lcd_cond = 0;
+      menu_cond = 1;
+      mode_cond = 1;
+    
+    }
+    else if (results.value == button_menu){
+      lcd.clear();
+      lcd_cond = 1;
+      menu_cond = 0;
+      mode_cond = 0;
+    }
+
+    irrecv.resume();
+    delay(10);            // Release the IRremote. Receive the next value
   }
-  delay(10);
+
+  //render mode screen if needed first
+  if (mode_cond == 0){
+    
+    if (results.value == button_1){
+        menu_cond = 1;
+        lcd.clear(); 
+        lcd.setCursor(0, 0);
+        lcd.print("1: RGB Speed");
+        lcd.setCursor(0, 1); 
+        lcd.print("-            +");
+        
+              
+      
+    }
+    else if (results.value == button_2){
+        menu_cond = 1;
+        lcd.clear(); 
+        lcd.setCursor(0, 0);
+        lcd.print("2: Set RGB Values");
+        lcd.setCursor(0, 1); 
+        lcd.print("-            +"); 
+    }
+    
+  }
   
+  // read DHT11 data and save it 
+  if (lcd_cond ==0){
+    flag:TempAndHumidity DHT = dht.getTempAndHumidity();
+    if (dht.getStatus() != 0) {       //Determine if the read is successful, and if it fails, go back to flag and re-read the data
+      goto flag;
+    }
+    lcd.setCursor(0, 0);              //set the cursor to column 0, line 1
+    lcd.print("Temperature:");        //display the Humidity on the LCD1602
+    lcd.print(DHT.temperature);   
+    lcd.setCursor(0, 1);              //set the cursor to column 0, line 0 
+    lcd.print("Humidity   :");        //display the Humidity on the LCD1602
+    lcd.print(DHT.humidity);  
+  }
+  else if (menu_cond == 0){
+    
+    lcd.setCursor(0, 0);
+    lcd.print("    LED MODE");
+    lcd.setCursor(0, 1); 
+    lcd.print("     1    2");        //1 is set specific color, 2 is set the speed
+    //lcd.print(results.value);
+     
+  }
+
+
+  //RGB
+  for (int i = 0; i < 256; i++) {
+    setColor(wheel(i));
+    delay(led_speed);
+  }
+  //remote 
 }
 
 
@@ -104,3 +167,9 @@ long wheel(int pos) {
     return ((WheelPos * 3) << 16 | (255 - WheelPos * 3));
   }
 }
+
+
+
+
+
+
