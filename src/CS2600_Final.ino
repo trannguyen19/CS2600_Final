@@ -1,6 +1,19 @@
-#include <WiFi.h>
-#include <PubSubClient.h>
-//------------------------
+/**********************************************************************
+  Filename    : Temperature and Humidity Sensor
+  Description : Use DHT11 to measure temperature and humidity.Print the result to the LCD1602.
+  Auther      : www.freenove.com
+  Modification: 2020/07/11
+**********************************************************************/
+#include <Arduino.h>
+#include <IRremoteESP8266.h>
+#include <IRrecv.h>
+#include <IRutils.h>
+const uint16_t recvPin = 15; // Infrared receiving pin
+IRrecv irrecv(recvPin);      // Create a class object used to receive class
+decode_results results;       // Create a decoding results class object
+
+//remote
+
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include "DHTesp.h"
@@ -12,83 +25,82 @@ DHTesp dht;                       // create dht object
 LiquidCrystal_I2C lcd(0x27,16,2); //initialize the LCD
 int dhtPin = 18;                  // the number of the DHT11 sensor pin
 
-//------------------------
-// WiFi
-const char *ssid = "tiger"; // Enter your WiFi name
-const char *password = "12345678";  // Enter WiFi password
+//-RBG------------------
 
-// MQTT Broker
-const char *mqtt_broker = "192.168.64.184";
-const char *topic = "esp32/test";
-const char *topic2 = "esp32/cmd";
-const char *mqtt_username = "emqx";
-const char *mqtt_password = "123456789";
-const int mqtt_port = 1883;
-
-WiFiClient espClient;
-PubSubClient client(espClient);
+const byte ledPins[] = {15, 2, 4};    //define led pins
+const byte chns[] = {0, 1, 2};        //define the pwm channels
+//-RBG------------------
 
 void setup() {
- // Set software serial baud to 115200;
- Serial.begin(115200);
- // connecting to a WiFi network
- uint32_t notConnectedCounter = 0;
- WiFi.begin(ssid, password);
- while (WiFi.status() != WL_CONNECTED) {
-      delay(100);
-      Serial.println("Wifi connecting...");
-      notConnectedCounter++;
-      if(notConnectedCounter > 150) { // Reset board if not connected after 5s
-          Serial.println("Resetting due to Wifi not connecting...");
-          ESP.restart();
-      }
-  }
- Serial.println("Connected to the WiFi network");
- //connecting to a mqtt broker
- client.setServer(mqtt_broker, mqtt_port);
- client.setCallback(callback);
- while (!client.connected()) {
-     String client_id = "esp32-client-";
-     client_id += String(WiFi.macAddress());
-     Serial.printf("The client %s connects to the public mqtt broker\n", client_id.c_str());
-     if (client.connect(client_id.c_str(), mqtt_username, mqtt_password)) {
-         Serial.println("Public emqx mqtt broker connected");
-     } else {
-         Serial.print("failed with state ");
-         Serial.print(client.state());
-         delay(2000);
-     }
- }
- // publish and subscribe
- client.publish(topic, "Hi EMQX I'm ESP32 ^^");
- client.subscribe(topic);
-
- Wire.begin(SDA, SCL);           // attach the IIC pin
+  Wire.begin(SDA, SCL);           // attach the IIC pin
   lcd.init();                     // LCD driver initialization
   lcd.backlight();                // Open the backlight
   dht.setup(dhtPin, DHTesp::DHT11); //attach the dht pin and initialize it
-}
 
-void callback(char *topic, byte *payload, unsigned int length) {
- lcd.setCursor(0, 0);
- lcd.clear();
- Serial.print("Message arrived in topic: ");
- Serial.println(topic);
- Serial.print("Message:");
- for (int i = 0; i < length; i++) {
-     Serial.print((char) payload[i]);
-     lcd.print((char) payload[i] );
- }
 
- Serial.println();
- Serial.println("-----------------------");
-              //set the cursor to column 0, line 1
+  //RBG
+  for (int i = 0; i < 3; i++) {   //setup the pwm channels
+    ledcSetup(chns[i], 1000, 8);
+    ledcAttachPin(ledPins[i], chns[i]);
+  }
+  //RBG
+  Serial.begin(115200);       // Initialize the serial port and set the baud rate to 115200
+  irrecv.enableIRIn();        // Start the receiver
+  Serial.print("IRrecvDemo is now running and waiting for IR message on Pin ");
+  Serial.println(recvPin);   //print the infrared receiving pin
 }
 
 void loop() {
-  
- client.loop();
- client.publish(topic2,"Hahahaha!");
- 
 
+  
+  //remote
+  
+  // read DHT11 data and save it 
+  flag:TempAndHumidity DHT = dht.getTempAndHumidity();
+  if (dht.getStatus() != 0) {       //Determine if the read is successful, and if it fails, go back to flag and re-read the data
+    goto flag;
+  }  
+  lcd.setCursor(0, 0);              //set the cursor to column 0, line 1
+  lcd.print("Temperature:");        //display the Humidity on the LCD1602
+  lcd.print(DHT.temperature);   
+  lcd.setCursor(0, 1);              //set the cursor to column 0, line 0 
+  lcd.print("Humidity   :");        //display the Humidity on the LCD1602
+  lcd.print(DHT.humidity);  
+
+
+  //RGB
+   for (int i = 0; i < 256; i++) {
+    setColor(wheel(i));
+    delay(20);
+  }
+
+  //remote
+  if (irrecv.decode(&results)) {          // Waiting for decoding
+    serialPrintUint64(results.value, HEX);// Print out the decoded results
+    Serial.println("");
+    irrecv.resume();                      // Release the IRremote. Receive the next value
+  }
+  delay(10);
+  
+}
+
+
+
+void setColor(long rgb) {
+  ledcWrite(chns[0], 255 - (rgb >> 16) & 0xFF);
+  ledcWrite(chns[1], 255 - (rgb >> 8) & 0xFF);
+  ledcWrite(chns[2], 255 - (rgb >> 0) & 0xFF);
+}
+
+long wheel(int pos) {
+  long WheelPos = pos % 0xff;
+  if (WheelPos < 85) {
+    return ((255 - WheelPos * 3) << 16) | ((WheelPos * 3) << 8);
+  } else if (WheelPos < 170) {
+    WheelPos -= 85;
+    return (((255 - WheelPos * 3) << 8) | (WheelPos * 3));
+  } else {
+    WheelPos -= 170;
+    return ((WheelPos * 3) << 16 | (255 - WheelPos * 3));
+  }
 }
