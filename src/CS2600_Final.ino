@@ -57,11 +57,12 @@ char arr_speed[speed_length]= "*******       ";
 int current_speed = 6;
 int led_speed = 40;
 const int rgb_length = 18;
-char arr_rgb[rgb_length] = " (   ,    ,   )  ";
+char arr_rgb[rgb_length] = " (   ,   ,   )  ";
 int current_rgb = 0;
 int ir_value;
 int arr_values[9];
-int input_state = 1;
+int remain_rgb = 0;
+int traverse_rgb = 0;
 
 const unsigned long button_play = 0xFFA857;
 const  long button_menu = 0xFFE21D;
@@ -78,7 +79,8 @@ const unsigned long button_7 = 0xFF42BD;
 const unsigned long button_8 = 0xFF4AB5;
 const unsigned long button_9 = 0xFF52AD;
 
-int red, green, blue;
+int red = 0, green =0, blue =0;
+double temp = 0;
 
 
 
@@ -93,6 +95,7 @@ void loop() {
       mode_cond = 1;
       mode_1 = 1;
       mode_2 = 1;
+      rgb_cond = 0;
     
     }
     else if (results.value == button_menu){
@@ -110,6 +113,7 @@ void loop() {
   if (mode_cond == 0){
     
     if ((results.value == button_1 || mode_1 == 0) && mode_2 == 1 ){
+        rgb_cond = 1;
         menu_cond = 1;
         mode_2 = 1;
         mode_1 = 0;
@@ -144,13 +148,7 @@ void loop() {
         
         mode_2 = 0;
         mode_1 = 1;
-        lcd.clear(); 
-        lcd.setCursor(0, 0);
-        lcd.print("2: Set RGB Values");
-        lcd.setCursor(0, 1); 
-        for (int i = 0 ; i < rgb_length - 1;i++){
-          lcd.print(arr_rgb[i]);
-        }
+        
 
         //logic for rbg input
         
@@ -159,20 +157,20 @@ void loop() {
             results.value == button_3 || results.value == button_4 || results.value == button_5 ||
             results.value == button_6 || results.value == button_7 || results.value == button_8 ||
             results.value == button_9) && menu_cond == 1){
-                if ((current_rgb + 2) == 2 || (current_rgb + 2) == 5 || (current_rgb+2) == 9){
-                    if ( convertHEX(results.value) >= 0 && convertHEX(results.value) <= 2){
-                        ir_value = convertHEX(results.value);
+                ir_value = convertHEX(results.value);
+                if (current_rgb ==0 || current_rgb == 3 || current_rgb == 6 ){
+                    if ( ir_value >= 0 && ir_value <= 2){
                         arr_values[current_rgb] = ir_value;
-                        arr_rgb[current_rgb+2] = (char)ir_value;
                         current_rgb++;
                     }
                   
                 }
+
                 else{
-                    arr_values[current_rgb] = convertHEX(results.value);
-                    arr_rgb[current_rgb+2] = (char)ir_value;
+                    arr_values[current_rgb] = ir_value;
                     current_rgb++;
                 }
+            
 
                 for(int j = 0; j< 9;j++){
                     Serial.print(arr_values[j]);
@@ -182,6 +180,64 @@ void loop() {
               
             }
             menu_cond = 1;
+
+        remain_rgb = current_rgb;
+        traverse_rgb = 0;
+        lcd.clear(); 
+        lcd.setCursor(0, 0);
+        lcd.print("2: Set RGB Values");
+        lcd.setCursor(0, 1); 
+
+        if (current_rgb == 9){
+          red = 0;
+          blue = 0;
+          green =0;
+          for(int i = 0; i < 3 ;i++){
+              if (i == 0){
+                red += arr_values[i] * 100;
+                blue += arr_values[i+3] *100;
+                green += arr_values[i+6]* 100;
+              }
+              if (i == 1){
+                red += arr_values[i] * 10;
+                blue += arr_values[i+3] *10;
+                green += arr_values[i+6]* 10;
+              }
+              else{
+                red += arr_values[i];
+                blue += arr_values[i+3];
+                green += arr_values[i+6];
+              }
+            
+          }
+          current_rgb = 0;
+          setColorMode2(red,blue,green);
+        }
+
+        
+        for (int i = 0 ; i < rgb_length - 1;i++){
+          if(i==0){
+              lcd.print("(");
+            }
+            else if (i == 12){
+              lcd.print(")");
+            }
+            else if (i %4 == 0){
+              lcd.print(",");
+            }
+            else{
+              if(remain_rgb > 0){
+                lcd.print(arr_values[traverse_rgb]);
+                remain_rgb--;
+                traverse_rgb++;
+              }
+              else{
+                lcd.print(" ");
+              }
+              
+            }
+            
+          }
 
             
     }
@@ -197,12 +253,26 @@ void loop() {
     if (dht.getStatus() != 0) {       //Determine if the read is successful, and if it fails, go back to flag and re-read the data
       goto flag;
     }
+    temp = (DHT.temperature * 1.8)+32;
+    //temp =DHT.temperature;
     lcd.setCursor(0, 0);              //set the cursor to column 0, line 1
     lcd.print("Temperature:");        //display the Humidity on the LCD1602
-    lcd.print(DHT.temperature);   
+    lcd.print(temp);   
     lcd.setCursor(0, 1);              //set the cursor to column 0, line 0 
     lcd.print("Humidity   :");        //display the Humidity on the LCD1602
-    lcd.print(DHT.humidity);  
+    lcd.print(DHT.humidity); 
+     
+    if (rgb_cond == 0){
+      if(temp >=80 && temp <= 100.0){
+          setColorMode0((int) DHT.temperature + 155,0,0);
+      }
+      else if(temp >=50 && temp <= 100.0)
+          setColorMode0(0,(int) temp + 155,0);
+      }
+      else{
+          setColorMode0(0,0,(int) temp + 155);
+      }
+  }
   }
   else if (menu_cond == 0){
     
@@ -216,16 +286,36 @@ void loop() {
 
 
   //RGB
-  for (int i = 0; i < 256; i++) {
-    setColor(wheel(i));
-    delay(led_speed);
+  if (rgb_cond == 1){
+    for (int i = 0; i < 256; i++) {
+      setColor(wheel(i));
+      delay(led_speed);
+    }
   }
+  else if (rgb_cond == 2){
+    
+  }
+ 
   //remote 
+}
+
+void setColorMode2(int &red, int &green, int &blue) {
+  ledcWrite(chns[2],255 - red);
+  ledcWrite(chns[1],255 - green);
+  ledcWrite(chns[0], 255 - blue);
+}
+void setColorMode0(int red, int green, int blue) {
+  ledcWrite(chns[2],255 - red);
+  ledcWrite(chns[1],255 - green);
+  ledcWrite(chns[0], 255 - blue);
 }
 
 
 
+
+
 void setColor(long rgb) {
+  rgb_cond = 2;
   ledcWrite(chns[0], 255 - (rgb >> 16) & 0xFF);
   ledcWrite(chns[1], 255 - (rgb >> 8) & 0xFF);
   ledcWrite(chns[2], 255 - (rgb >> 0) & 0xFF);
