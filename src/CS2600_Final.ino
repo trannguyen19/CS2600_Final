@@ -1,4 +1,6 @@
-
+#include <WiFi.h>
+#include <stdlib.h>
+#include <PubSubClient.h>
 #include <Arduino.h>
 #include <IRremoteESP8266.h>
 #include <IRrecv.h>
@@ -16,6 +18,31 @@ decode_results results;       // Create a decoding results class object
 #define SDA 13                    //Define SDA pins
 #define SCL 14                    //Define SCL pins
 
+// WiFi
+const char *ssid = "tiger"; // Enter your WiFi name
+const char *password = "12345678";  // Enter WiFi password
+const char *mqtt_username = "testing";
+const char *mqtt_password = "12345678";
+
+unsigned long startTime;
+unsigned long endTime;
+
+
+// MQTT Broker
+const char *mqtt_broker = "192.168.64.184";
+const char *topic = "esp32/main";
+const char *topic2 = "esp32/temp";
+const char *topic3 = "esp32/irOutput";
+const int mqtt_port = 1883;
+char respond[100];
+char buf[50];
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+
+//LCD
+
 DHTesp dht;                       // create dht object
 LiquidCrystal_I2C lcd(0x27,16,2); //initialize the LCD
 int dhtPin = 18;                  // the number of the DHT11 sensor pin
@@ -27,6 +54,36 @@ const byte chns[] = {0, 1, 2};        //define the pwm channels
 //-RBG------------------
 
 void setup() {
+  //Broker
+  // Set software serial baud to 115200;
+ Serial.begin(115200);
+ // connecting to a WiFi network
+ WiFi.begin(ssid, password);
+ while (WiFi.status() != WL_CONNECTED) {
+     delay(500);
+     Serial.println("Connecting to WiFi..");
+ }
+ Serial.println("Connected to the WiFi network");
+ //connecting to a mqtt broker
+ client.setServer(mqtt_broker, mqtt_port);
+ client.setCallback(callback);
+ while (!client.connected()) {
+     String client_id = "esp32-client-";
+     client_id += String(WiFi.macAddress());
+     Serial.printf("The client %s connects to the public mqtt broker\n", client_id.c_str());
+     if (client.connect(client_id.c_str(), mqtt_username, mqtt_password)) {
+         Serial.println("Public MQTT broker connected");
+     } else {
+         Serial.print("failed with state ");
+         Serial.print(client.state());
+         delay(2000);
+     }
+ }
+ // publish and subscribe
+ client.publish(topic, "Published message from ESP32");
+ client.subscribe(topic);
+
+  //LCD
   Wire.begin(SDA, SCL);           // attach the IIC pin
   lcd.init();                     // LCD driver initialization
   lcd.backlight();                // Open the backlight
@@ -41,7 +98,7 @@ void setup() {
   //RBG
   Serial.begin(115200);       // Initialize the serial port and set the baud rate to 115200
   irrecv.enableIRIn();        // Start the receiver
-  Serial.print("IRrecvDemo is now running and waiting for IR message on Pin ");
+  Serial.print("IR Remote is now running and waiting for IR message: ");
   Serial.println(recvPin);   //print the infrared receiving pin
 }
 
@@ -65,7 +122,7 @@ int remain_rgb = 0;
 int traverse_rgb = 0;
 
 const unsigned long button_play = 0xFFA857;
-const  long button_menu = 0xFFE21D;
+const unsigned long button_menu = 0xFFE21D;
 const unsigned long button_add = 0xFF02FD;
 const unsigned long button_minus = 0xFF9867;
 const unsigned long button_0 = 0xFF6897;
@@ -81,13 +138,21 @@ const unsigned long button_9 = 0xFF52AD;
 
 int red = 0, green =0, blue =0;
 double temp = 0;
+double preTemp =0;
+double preHumid =0;
+double humid = 0;
 
 
 
 void loop() {
+  client.loop();
   if (irrecv.decode(&results)) {          // Waiting for decoding
     serialPrintUint64(results.value, HEX);// Print out the decoded results
     Serial.println("");
+    strcpy(respond,"");
+        snprintf(buf, 50, "%c", convertChar(results.value));
+        strcat(respond,buf);
+    client.publish(topic3,respond);
     if(results.value == button_play){
       lcd.clear();
       lcd_cond = 0;
@@ -253,25 +318,43 @@ void loop() {
     if (dht.getStatus() != 0) {       //Determine if the read is successful, and if it fails, go back to flag and re-read the data
       goto flag;
     }
+    
     temp = (DHT.temperature * 1.8)+32;
+    humid = DHT.humidity;
+    
     //temp =DHT.temperature;
     lcd.setCursor(0, 0);              //set the cursor to column 0, line 1
     lcd.print("Temperature:");        //display the Humidity on the LCD1602
     lcd.print(temp);   
     lcd.setCursor(0, 1);              //set the cursor to column 0, line 0 
     lcd.print("Humidity   :");        //display the Humidity on the LCD1602
-    lcd.print(DHT.humidity); 
-     
+    lcd.print(humid); 
+
+    
     if (rgb_cond == 0){
+      if(temp != preTemp || preHumid != humid){
+        strcpy(respond,"Temperature: ");
+        snprintf(buf, 50, "%.2f", temp);
+        strcat(respond,buf);
+        strcat(respond,"  Humidity: ");
+        snprintf(buf, 50, "%.2f", humid);
+        strcat(respond,buf);
+        client.publish(topic2,respond);
+        setColorMode0(0,0,0);
+        delay(100);
+      }
       if(temp >=80 && temp <= 100.0){
           setColorMode0((int) DHT.temperature + 155,0,0);
       }
-      else if(temp >=50 && temp <= 100.0)
+      else if(temp >=50 && temp <= 100.0){
           setColorMode0(0,(int) temp + 155,0);
       }
       else{
           setColorMode0(0,0,(int) temp + 155);
       }
+      preTemp = temp;
+      preHumid = humid;
+     
   }
   }
   else if (menu_cond == 0){
@@ -280,7 +363,7 @@ void loop() {
     lcd.print("    LED MODE");
     lcd.setCursor(0, 1); 
     lcd.print("     1    2");        //1 is set specific color, 2 is set the speed
-    //lcd.print(results.value);
+    
      
   }
 
@@ -359,9 +442,61 @@ int convertHEX (long unsigned value){
   }
   return ir_value;
 }
+char convertChar (long unsigned values){
+  char value;
+  switch (values){
+      case button_0:
+        value = '0'; break;
+      case button_1:
+        value = '1'; break;
+      case button_2:
+        value = '2'; break;
+      case button_3:
+        value = '3'; break;
+      case button_4:
+        value = '4'; break;
+      case button_5:
+        value = '5'; break;
+      case button_6:
+        value = '6'; break;
+      case button_7:
+        value = '7'; break;
+      case button_8:
+        value = '8'; break;
+      case button_9:
+        value = '9'; break;
+      case button_add:
+        value = '+'; break;
+      case button_minus:
+        value = '-'; break;
+      case button_play:
+        value = 'P'; break;
+      case button_menu:
+        value = 'M'; break;
+      defaut:
+        value = '!';
+        
+  }
+  return value;
+}
 
 
+void callback(char *topic, byte *payload, unsigned int length) {
 
-
-
+ if(lcd_cond ==0){
+  lcd.clear();
+ strcpy(respond,"   It is a ");
+ lcd.setCursor(0,0);
+ lcd.print(respond);
+ snprintf(buf, length+1, "%s", payload);
+ strcpy(respond,"   ");
+ strcat(respond,buf);
+ strcat(respond," day!");
+ lcd.setCursor(0,1);
+ lcd.print(respond);
+ delay(2200);
+  
+ }
+ 
+}
 
