@@ -8,7 +8,7 @@ To run the program:
 # Youtube Video
 
 | Project Part| File        |
-| :-----------||:-----------|
+| :---|:---|
 | 1           |src\Final_1.ino|
 | 2           |src\CS2600_Final.ino|
 
